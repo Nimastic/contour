@@ -785,11 +785,28 @@ function animate() {
         direction.applyQuaternion(state.plane.quaternion);
         state.plane.position.addScaledVector(direction, forwardSpeed * delta);
 
-        // Check collision with terrain/water or out of bounds
+        // Check collision with terrain or out of bounds
         const pos = state.plane.position;
         const bounds = 50;
-        if (pos.y < 0 || Math.abs(pos.x) > bounds || Math.abs(pos.z) > bounds) {
-            // Reset plane to starting position
+        let shouldReset = Math.abs(pos.x) > bounds || Math.abs(pos.z) > bounds;
+
+        // Raycast to detect terrain height
+        if (!shouldReset && state.terrain) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.set(
+                new THREE.Vector3(pos.x, 100, pos.z),
+                new THREE.Vector3(0, -1, 0)
+            );
+            const intersects = raycaster.intersectObject(state.terrain);
+            if (intersects.length > 0) {
+                const terrainHeight = intersects[0].point.y;
+                if (pos.y < terrainHeight + 0.5) {
+                    shouldReset = true;
+                }
+            }
+        }
+
+        if (shouldReset) {
             state.plane.position.set(0, 20, 0);
             state.plane.rotation.set(0, 0, 0);
         }
