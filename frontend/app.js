@@ -11,6 +11,7 @@ const state = {
     camera: null,
     renderer: null,
     terrain: null,
+    sun: null,
 
     // Data
     fileId: null,
@@ -61,13 +62,10 @@ function init() {
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     state.scene.add(ambient);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(-100, 150, 100);
-    state.scene.add(sun);
-
-    const fill = new THREE.DirectionalLight(0xffffff, 0.3);
-    fill.position.set(100, 50, -100);
-    state.scene.add(fill);
+    state.sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    // Match original position: (-100, 150, 100)
+    state.sun.position.set(-100, 150, 100);
+    state.scene.add(state.sun);
 
     // Water plane
     const waterGeo = new THREE.PlaneGeometry(400, 400);
@@ -149,6 +147,43 @@ function setupUI() {
     const rotSlider = document.getElementById('rotation');
     rotSlider.addEventListener('input', () => {
         document.getElementById('rotation-val').textContent = rotSlider.value + '%';
+    });
+
+    // Lighting controls
+    const azimuthSlider = document.getElementById('sun-azimuth');
+    const elevationSlider = document.getElementById('sun-elevation');
+
+    function updateSunPosition() {
+        const azimuthDeg = parseFloat(azimuthSlider.value);
+        const elevationDeg = parseFloat(elevationSlider.value);
+
+        // Update value displays
+        document.getElementById('sun-azimuth-val').textContent = azimuthDeg + '°';
+        document.getElementById('sun-elevation-val').textContent = elevationDeg + '°';
+
+        // Convert to radians
+        const azimuthRad = azimuthDeg * Math.PI / 180;
+        const elevationRad = elevationDeg * Math.PI / 180;
+
+        // Calculate x,y,z position (distance matches original sun position)
+        const distance = 206;
+        const x = distance * Math.cos(elevationRad) * Math.cos(azimuthRad);
+        const y = distance * Math.sin(elevationRad);
+        const z = distance * Math.cos(elevationRad) * Math.sin(azimuthRad);
+
+        // Update sun position
+        if (state.sun) {
+            state.sun.position.set(x, y, z);
+        }
+    }
+
+    azimuthSlider.addEventListener('input', updateSunPosition);
+    elevationSlider.addEventListener('input', updateSunPosition);
+
+    document.getElementById('reset-sun-btn').addEventListener('click', () => {
+        azimuthSlider.value = 135;
+        elevationSlider.value = 47;
+        updateSunPosition();
     });
 
     document.getElementById('fly-btn').addEventListener('click', toggleFlyMode);
@@ -277,6 +312,7 @@ function loadTexture(base64) {
         // Create initial flat terrain
         createTerrain();
         document.getElementById('view-section').classList.remove('hidden');
+        document.getElementById('lighting-section').classList.remove('hidden');
     });
 }
 
