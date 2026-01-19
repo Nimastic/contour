@@ -36,7 +36,11 @@ const state = {
     plane: null,
     planeModel: null,
     planeMode: false,
-    planeAudio: null
+    planeAudio: null,
+
+    // GPX Track
+    gpxTrack: null,
+    gpxData: null
 };
 
 // ===========================================
@@ -254,8 +258,15 @@ function setupUI() {
     document.getElementById('fly-btn').addEventListener('click', toggleFlyMode);
     document.getElementById('voice-btn').addEventListener('click', toggleVoiceChat);
 
+    // Export buttons
+    document.getElementById('export-stl-btn').addEventListener('click', exportSTL);
+    document.getElementById('export-glb-btn').addEventListener('click', exportGLB);
+
     // Mouse controls
     setupMouseControls();
+
+    // GPX file upload
+    setupGPXUpload();
 
     // Keyboard controls
     document.addEventListener('keydown', (e) => state.keys[e.code] = true);
@@ -397,6 +408,7 @@ function loadTexture(base64) {
         document.getElementById('view-section').classList.remove('hidden');
         document.getElementById('lighting-section').classList.remove('hidden');
         document.getElementById('voice-section').classList.remove('hidden');
+        document.getElementById('gpx-section').classList.remove('hidden');
         updateStepNumbers();
     });
 }
@@ -432,6 +444,11 @@ function createTerrain() {
     state.terrain.castShadow = true;
     state.terrain.receiveShadow = true;
     state.scene.add(state.terrain);
+
+    // Re-render GPX track if loaded
+    if (state.gpxData) {
+        setTimeout(() => renderGPXTrack(), 100);
+    }
 }
 
 function applyHeightmapToGeometry(geometry, heightmapTexture, scale) {
@@ -905,6 +922,233 @@ function animate() {
     }
 
     state.renderer.render(state.scene, state.camera);
+}
+
+// ===========================================
+// GPX TRACK
+// ===========================================
+function setupGPXUpload() {
+    const gpxDropZone = document.getElementById('gpx-drop-zone');
+    const gpxInput = document.getElementById('gpx-input');
+
+    if (!gpxDropZone || !gpxInput) return;
+
+    gpxDropZone.addEventListener('click', () => gpxInput.click());
+
+    gpxDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        gpxDropZone.classList.add('dragover');
+    });
+
+    gpxDropZone.addEventListener('dragleave', () => {
+        gpxDropZone.classList.remove('dragover');
+    });
+
+    gpxDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        gpxDropZone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) uploadGPX(file);
+    });
+
+    gpxInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) uploadGPX(file);
+    });
+}
+
+async function uploadGPX(file) {
+    showLoading('Processing GPX track...');
+    setStatus('Uploading GPX...', 'loading');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/upload-gpx', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'GPX upload failed');
+        }
+
+        const data = await response.json();
+        state.gpxData = data;
+
+        // Update UI
+        document.getElementById('gpx-info').classList.remove('hidden');
+        document.getElementById('gpx-name').textContent = data.name;
+        document.getElementById('gpx-stats').textContent =
+            `${data.elevation_range.min.toFixed(0)}m - ${data.elevation_range.max.toFixed(0)}m`;
+
+        // Render track on terrain if terrain exists
+        if (state.terrain && state.bounds) {
+            renderGPXTrack();
+        }
+
+        hideLoading();
+        setStatus(`GPX loaded: ${data.simplified_points} points`, 'success');
+
+    } catch (err) {
+        hideLoading();
+        setStatus('GPX Error: ' + err.message, 'error');
+        console.error(err);
+    }
+}
+
+function renderGPXTrack() {
+    if (!state.gpxData || !state.bounds || !state.terrain) return;
+
+    // Remove existing track
+    if (state.gpxTrack) {
+        state.scene.remove(state.gpxTrack);
+        state.gpxTrack.geometry.dispose();
+        state.gpxTrack.material.dispose();
+    }
+
+    const points = state.gpxData.points;
+    const terrainSize = 100;
+    const { north, south, east, west } = state.bounds;
+
+    // Convert lat/lon to terrain coordinates
+    const vertices = [];
+
+    for (const pt of points) {
+        // Normalize to 0-1
+        const u = (pt.lon - west) / (east - west);
+        const v = (north - pt.lat) / (north - south);
+
+        // Convert to terrain coords (-50 to 50)
+        const x = (u - 0.5) * terrainSize;
+        const z = (v - 0.5) * terrainSize;
+
+        // Get height at this position via raycast
+        let y = 5; // Default height above terrain
+        const raycaster = new THREE.Raycaster();
+        raycaster.set(
+            new THREE.Vector3(x, 100, z),
+            new THREE.Vector3(0, -1, 0)
+        );
+        const intersects = raycaster.intersectObject(state.terrain);
+        if (intersects.length > 0) {
+            y = intersects[0].point.y + 0.3; // Slightly above terrain
+        }
+
+        vertices.push(new THREE.Vector3(x, y, z));
+    }
+
+    // Create the 3D line
+    const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+    const material = new THREE.LineBasicMaterial({
+        color: 0xff6b9d,
+        linewidth: 3
+    });
+
+    state.gpxTrack = new THREE.Line(geometry, material);
+    state.scene.add(state.gpxTrack);
+
+    // Also add spheres at start and end points
+    if (vertices.length > 0) {
+        const startGeo = new THREE.SphereGeometry(0.5, 16, 16);
+        const startMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // Green start
+        const startSphere = new THREE.Mesh(startGeo, startMat);
+        startSphere.position.copy(vertices[0]);
+        state.gpxTrack.add(startSphere);
+
+        const endGeo = new THREE.SphereGeometry(0.5, 16, 16);
+        const endMat = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red end (summit!)
+        const endSphere = new THREE.Mesh(endGeo, endMat);
+        endSphere.position.copy(vertices[vertices.length - 1]);
+        state.gpxTrack.add(endSphere);
+    }
+}
+
+// ===========================================
+// 3D MODEL EXPORT
+// ===========================================
+function exportSTL() {
+    if (!state.terrain) {
+        setStatus('No terrain to export', 'error');
+        return;
+    }
+
+    setStatus('Exporting STL...', 'loading');
+
+    try {
+        const exporter = new THREE.STLExporter();
+
+        // Create a copy of terrain for export (apply rotation)
+        const exportMesh = state.terrain.clone();
+        exportMesh.updateMatrixWorld(true);
+
+        // Apply world matrix to geometry for proper export
+        const geometry = exportMesh.geometry.clone();
+        geometry.applyMatrix4(exportMesh.matrixWorld);
+
+        const tempMesh = new THREE.Mesh(geometry, exportMesh.material);
+
+        const stlString = exporter.parse(tempMesh);
+        const blob = new Blob([stlString], { type: 'application/octet-stream' });
+
+        // Download
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'tsorku_peak_terrain.stl';
+        link.click();
+        URL.revokeObjectURL(link.href);
+
+        setStatus('STL exported successfully!', 'success');
+    } catch (err) {
+        setStatus('Export error: ' + err.message, 'error');
+        console.error(err);
+    }
+}
+
+function exportGLB() {
+    if (!state.terrain) {
+        setStatus('No terrain to export', 'error');
+        return;
+    }
+
+    setStatus('Exporting GLB...', 'loading');
+
+    try {
+        const exporter = new THREE.GLTFExporter();
+
+        // Create a group with terrain and (optionally) GPX track
+        const exportGroup = new THREE.Group();
+
+        // Clone terrain
+        const terrainClone = state.terrain.clone();
+        exportGroup.add(terrainClone);
+
+        // Add GPX track if exists
+        if (state.gpxTrack) {
+            const trackClone = state.gpxTrack.clone();
+            exportGroup.add(trackClone);
+        }
+
+        exporter.parse(exportGroup, (gltf) => {
+            const blob = new Blob([gltf], { type: 'application/octet-stream' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'tsorku_peak_terrain.glb';
+            link.click();
+            URL.revokeObjectURL(link.href);
+
+            setStatus('GLB exported successfully!', 'success');
+        }, (error) => {
+            setStatus('Export error: ' + error.message, 'error');
+            console.error(error);
+        }, { binary: true });
+
+    } catch (err) {
+        setStatus('Export error: ' + err.message, 'error');
+        console.error(err);
+    }
 }
 
 // ===========================================

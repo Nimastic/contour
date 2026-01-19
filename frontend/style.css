@@ -329,3 +329,50 @@ button:disabled {
     border-color: #e74c3c;
     color: white;
 }
+
+/* GPX Drop Zone */
+#gpx-drop-zone {
+    border: 2px dashed #333;
+    border-radius: 8px;
+    padding: 20px 15px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#gpx-drop-zone:hover,
+#gpx-drop-zone.dragover {
+    border-color: #ff6b9d;
+    background: rgba(255, 107, 157, 0.05);
+}
+
+#gpx-drop-zone p {
+    font-size: 13px;
+    color: #666;
+}
+
+#gpx-drop-zone small {
+    color: #444;
+}
+
+#gpx-drop-zone input {
+    display: none;
+}
+
+#gpx-info {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #111;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+#gpx-name {
+    color: #ff6b9d;
+    font-weight: 600;
+}
+
+#gpx-stats {
+    background: #3a1a2e;
+    color: #ff6b9d;
+}

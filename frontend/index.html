@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contour - 2D Maps to 3D Terrain</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
@@ -61,6 +62,20 @@
             <button class="secondary" id="stylize-btn">🎨 Stylize Texture</button>
         </section>
 
+        <!-- GPX Track Section -->
+        <section id="gpx-section" class="hidden">
+            <h3 data-step-label="GPX Track"></h3>
+            <div id="gpx-drop-zone">
+                <p>Drop GPX file<br><small>to show your route</small></p>
+                <input type="file" id="gpx-input" accept=".gpx">
+            </div>
+            <div id="gpx-info" class="hidden">
+                <span id="gpx-name"></span>
+                <span id="gpx-stats" class="badge"></span>
+            </div>
+        </section>
+
+
         <!-- View Controls -->
         <section id="view-section" class="hidden">
             <h3 data-step-label="Explore"></h3>
@@ -80,6 +95,8 @@
                 <span class="value" id="plane-volume-val">50%</span>
             </div>
             <button class="secondary" id="fly-btn">✈️ Fly Plane</button>
+            <button class="primary" id="export-stl-btn">📥 Download STL</button>
+            <button class="secondary" id="export-glb-btn">📥 Download GLB</button>
         </section>
 
         <!-- Lighting Controls -->
@@ -127,6 +144,8 @@
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
     <script src="/static/voice.js"></script>
     <script src="/static/app.js"></script>
 </body>

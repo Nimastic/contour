@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from . import terrain
 from . import gemini_client
 from . import fal_stylize
+from . import gpx_parser
 
 # Load environment variables
 load_dotenv()
@@ -83,6 +84,40 @@ async def upload_map(file: UploadFile = File(...)):
             })
     except Exception as e:
         raise HTTPException(500, f"Processing error: {str(e)}")
+
+
+@app.post("/api/upload-gpx")
+async def upload_gpx(file: UploadFile = File(...)):
+    """
+    Upload a GPX file and extract track coordinates.
+    """
+    ext = Path(file.filename).suffix.lower()
+    
+    if ext != ".gpx":
+        raise HTTPException(400, "Invalid file type. Only .gpx files allowed.")
+    
+    # Save file
+    file_id = str(uuid.uuid4())[:8]
+    save_path = UPLOADS_DIR / f"{file_id}.gpx"
+    
+    with open(save_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    
+    try:
+        # Parse GPX and extract track points
+        data = gpx_parser.parse_gpx(str(save_path), simplify_factor=20)
+        return JSONResponse({
+            "success": True,
+            "file_id": file_id,
+            "name": data["name"],
+            "points": data["points"],
+            "bounds": data["bounds"],
+            "elevation_range": data["elevation_range"],
+            "total_points": data["total_points"],
+            "simplified_points": data["simplified_points"]
+        })
+    except Exception as e:
+        raise HTTPException(500, f"GPX parsing error: {str(e)}")
 
 
 @app.post("/api/extract-bounds")
@@ -157,3 +192,4 @@ async def get_gemini_key():
     if not key:
         raise HTTPException(500, "GEMINI_API_KEY not configured")
     return {"key": key}
+
