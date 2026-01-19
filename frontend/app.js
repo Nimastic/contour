@@ -421,11 +421,26 @@ function createTerrain() {
         state.terrain.material.dispose();
     }
 
-    const size = 100;
     const segments = 256;
     const exag = parseFloat(document.getElementById('exag').value);
 
-    const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
+    // Calculate aspect ratio from bounds
+    let width = 100;
+    let height = 100;
+    if (state.bounds) {
+        const latMid = (state.bounds.north + state.bounds.south) / 2;
+        const lonScale = Math.cos(latMid * Math.PI / 180);
+        const dLat = Math.abs(state.bounds.north - state.bounds.south);
+        const dLon = Math.abs(state.bounds.east - state.bounds.west) * lonScale;
+
+        if (dLon > dLat) {
+            height = 100 * (dLat / dLon);
+        } else {
+            width = 100 * (dLon / dLat);
+        }
+    }
+
+    const geometry = new THREE.PlaneGeometry(width, height, segments, segments);
 
     // Apply heightmap to actual geometry vertices (not displacement map)
     if (state.heightmapTexture) {
@@ -598,11 +613,18 @@ async function fetchDEM() {
         const cropW = ((east - west) / (tileBoundsSE.lon - tileBoundsNW.lon)) * width;
         const cropH = ((north - south) / (tileBoundsNW.lat - tileBoundsSE.lat)) * height;
 
+        // Maintain aspect ratio for heightmap
         const finalCanvas = document.createElement('canvas');
-        finalCanvas.width = 512;
-        finalCanvas.height = 512;
+        if (cropW > cropH) {
+            finalCanvas.width = 512;
+            finalCanvas.height = Math.round(512 * (cropH / cropW));
+        } else {
+            finalCanvas.height = 512;
+            finalCanvas.width = Math.round(512 * (cropW / cropH));
+        }
+
         finalCanvas.getContext('2d').drawImage(
-            hmCanvas, cropX, cropY, cropW, cropH, 0, 0, 512, 512
+            hmCanvas, cropX, cropY, cropW, cropH, 0, 0, finalCanvas.width, finalCanvas.height
         );
 
         // Create texture
@@ -955,6 +977,21 @@ function setupGPXUpload() {
         const file = e.target.files[0];
         if (file) uploadGPX(file);
     });
+
+    // Thickness slider
+    const thicknessSlider = document.getElementById('gpx-thickness');
+    const thicknessVal = document.getElementById('gpx-thickness-val');
+
+    thicknessSlider.addEventListener('input', () => {
+        thicknessVal.textContent = thicknessSlider.value + 'px';
+        if (state.gpxData) renderGPXTrack();
+    });
+
+    // Color picker
+    const colorPicker = document.getElementById('gpx-color');
+    colorPicker.addEventListener('input', () => {
+        if (state.gpxData) renderGPXTrack();
+    });
 }
 
 async function uploadGPX(file) {
@@ -992,6 +1029,9 @@ async function uploadGPX(file) {
         hideLoading();
         setStatus(`GPX loaded: ${data.simplified_points} points`, 'success');
 
+        // Show thickness control
+        document.getElementById('gpx-thickness').parentElement.classList.remove('hidden');
+
     } catch (err) {
         hideLoading();
         setStatus('GPX Error: ' + err.message, 'error');
@@ -1010,7 +1050,9 @@ function renderGPXTrack() {
     }
 
     const points = state.gpxData.points;
-    const terrainSize = 100;
+    const terrainParams = state.terrain.geometry.parameters;
+    const terrainWidth = terrainParams.width;
+    const terrainHeight = terrainParams.height;
     const { north, south, east, west } = state.bounds;
 
     // Convert lat/lon to terrain coordinates
@@ -1021,9 +1063,9 @@ function renderGPXTrack() {
         const u = (pt.lon - west) / (east - west);
         const v = (north - pt.lat) / (north - south);
 
-        // Convert to terrain coords (-50 to 50)
-        const x = (u - 0.5) * terrainSize;
-        const z = (v - 0.5) * terrainSize;
+        // Convert to terrain coords
+        const x = (u - 0.5) * terrainWidth;
+        const z = (v - 0.5) * terrainHeight;
 
         // Get height at this position via raycast
         let y = 5; // Default height above terrain
@@ -1041,10 +1083,12 @@ function renderGPXTrack() {
     }
 
     // Create the 3D line
+    const thickness = parseFloat(document.getElementById('gpx-thickness').value);
+    const color = document.getElementById('gpx-color').value;
     const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
     const material = new THREE.LineBasicMaterial({
-        color: 0xff6b9d,
-        linewidth: 3
+        color: new THREE.Color(color),
+        linewidth: thickness
     });
 
     state.gpxTrack = new THREE.Line(geometry, material);
@@ -1149,6 +1193,24 @@ function exportGLB() {
         setStatus('Export error: ' + err.message, 'error');
         console.error(err);
     }
+}
+
+function getGeoPosition() {
+    if (!state.terrain || !state.bounds) return null;
+
+    const pos = state.cameraMode === 'fly' && state.plane ? state.plane.position : state.camera.position;
+    const terrainParams = state.terrain.geometry.parameters;
+    const { north, south, east, west } = state.bounds;
+
+    // Map terrain coords to 0-1
+    const u = (pos.x / terrainParams.width) + 0.5;
+    const v = (pos.z / terrainParams.height) + 0.5;
+
+    // Map 0-1 to lat/lon
+    const lat = north - v * (north - south);
+    const lon = west + u * (east - west);
+
+    return { lat, lon };
 }
 
 // ===========================================

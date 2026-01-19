@@ -48,14 +48,31 @@ def extract_geotiff_data(file_path: str) -> dict:
         # Read image data
         data = src.read()  # Shape: (bands, height, width)
         
-        # Convert to RGB
+        # Convert to RGB or normalize single band
         if data.shape[0] >= 3:
+            # Traditional 3-band (RGB) GeoTIFF
             rgb = np.stack([data[0], data[1], data[2]], axis=-1)
+            # Ensure 8-bit
+            if rgb.dtype != np.uint8:
+                rgb = ((rgb - rgb.min()) / (rgb.max() - rgb.min()) * 255).astype(np.uint8)
         else:
-            rgb = np.stack([data[0], data[0], data[0]], axis=-1)
+            # Single-band (DEM/Grayscale) - Perform min-max normalization (Whitescaling)
+            band = data[0].astype(float)
+            valid_mask = band != src.nodata if src.nodata is not None else np.ones_like(band, dtype=bool)
+            
+            b_min = band[valid_mask].min() if np.any(valid_mask) else 0
+            b_max = band[valid_mask].max() if np.any(valid_mask) else 1
+            
+            if b_max > b_min:
+                normalized = (band - b_min) / (b_max - b_min) * 255
+            else:
+                normalized = np.zeros_like(band)
+                
+            normalized = np.clip(normalized, 0, 255).astype(np.uint8)
+            rgb = np.stack([normalized, normalized, normalized], axis=-1)
         
         # Create PIL image
-        img = Image.fromarray(rgb.astype(np.uint8))
+        img = Image.fromarray(rgb)
         original_width, original_height = img.size
         
         # Resize for web (max 2048 on longest side)
